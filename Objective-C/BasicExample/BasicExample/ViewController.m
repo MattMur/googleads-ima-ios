@@ -84,7 +84,7 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
 
   // Size, position, and display the AVPlayer.
   self.playerLayer.frame = self.videoView.layer.bounds;
-  self.playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+  self.playerLayer.videoGravity = AVLayerVideoGravityResize;
   [self.videoView.layer addSublayer:self.playerLayer];
 
   // Set up our content playhead and contentComplete callback.
@@ -122,6 +122,11 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
   if (notification.object == self.contentPlayer.currentItem) {
     [self.adsLoader contentComplete];
   }
+}
+
+// Attempt to update IMAAdDisplayContainer ViewController when we switch between fullscreen
+- (void)updateIMADisplayContainerViewController:(UIViewController *)viewController {
+    self.adDisplayContainer.adContainerViewController = viewController;
 }
 
 #pragma mark AdsLoader Delegates
@@ -173,9 +178,7 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
 
 - (void)expandFullScreen {
     
-    // Set IMA Display ViewController to FullScreen
-    
-    // Load from Nib
+    // Load fullscreen player from Nib
     if (!self.fullScreenControlsView) {
         NSBundle *bundle = [NSBundle bundleForClass:[NtvCustomVideoControlsView class]];
         NSArray *nibItems = [bundle loadNibNamed:@"NtvCustomVideoControlsView" owner:nil options:nil];
@@ -202,7 +205,6 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
     
     // Load player item into full screen controls
     if (self.contentPlayer.currentItem) {
-        // Load player item into full screen controls
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.fullScreenControlsView didLoadNewPlayerItem:self.contentPlayer.currentItem];
         });
@@ -217,14 +219,7 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
     if (rootView) {
         [AppUtils removeViewConstraints:self.fullScreenControlsView];
         [rootView addSubview:self.fullScreenControlsView];
-        if ([window respondsToSelector:@selector(safeAreaInsets)]) {
-            if (@available(iOS 11.0, *)) {
-                UIEdgeInsets edges = UIEdgeInsetsMake(0, 0, 0, 0);
-                [AppUtils setViewAnchors:self.fullScreenControlsView equalToView:rootView withInsets:edges];
-            }
-        } else {
-            [AppUtils setViewAnchors:self.fullScreenControlsView equalToView:rootView];
-        }
+        [AppUtils setViewAnchors:self.fullScreenControlsView equalToView:rootView];
         
         [self.fullScreenControlsView setAlpha:0];
         [UIView animateWithDuration:0.33f animations:^{

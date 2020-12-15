@@ -1,10 +1,7 @@
-source 'git@github.com:NativoPlatform/CocoaPods-Private-Specs.git'
-source 'https://cdn.cocoapods.org/'
-
 platform :ios, '10'
 
 target "BasicExample" do
   use_frameworks!
   pod 'GoogleAds-IMA-iOS-SDK', '~> 3.7'
-  pod 'NativoVideoControls'
+  pod 'NativoVideoControls', '~> 5.3.1'
 end
