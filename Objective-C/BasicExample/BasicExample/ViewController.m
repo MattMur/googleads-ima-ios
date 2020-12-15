@@ -2,6 +2,7 @@
 
 @import AVFoundation;
 @import GoogleInteractiveMediaAds;
+@import NativoVideoControls;
 
 @interface ViewController () <IMAAdsLoaderDelegate, IMAAdsManagerDelegate>
 
@@ -24,6 +25,12 @@
 /// Main point of interaction with the SDK. Created by the SDK as the result of an ad request.
 @property(nonatomic, strong) IMAAdsManager *adsManager;
 
+// New properties added
+@property (nonatomic) NtvCustomVideoControlsView *fullScreenControlsView;
+@property (nonatomic, weak) IBOutlet UIView *videoViewContainer;
+@property (nonatomic) AVPlayerLayer *playerLayer;
+@property (nonatomic) IMAAdDisplayContainer *adDisplayContainer;
+
 @end
 
 @implementation ViewController
@@ -44,12 +51,25 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
   self.playButton.layer.zPosition = MAXFLOAT;
 
   [self setupAdsLoader];
-  [self setUpContentPlayer];
+    
+    // Wait for contstraints to layout before setup
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setUpContentPlayer];
+    });
+    
+    UITapGestureRecognizer *tapGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(onVideoPlayerTouch:)];
+    [self.videoViewContainer addGestureRecognizer:tapGesture];
 }
 
-- (IBAction)onPlayButtonTouch:(id)sender {
-  [self requestAds];
-  self.playButton.hidden = YES;
+//- (IBAction)onPlayButtonTouch:(id)sender {
+//  [self requestAds];
+//  self.playButton.hidden = YES;
+//}
+
+- (void)onVideoPlayerTouch:(UITapGestureRecognizer *)tap {
+    [self requestAds];
+    self.playButton.hidden = YES;
+    [self expandFullScreen];
 }
 
 #pragma mark Content Player Setup
@@ -60,11 +80,12 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
   self.contentPlayer = [AVPlayer playerWithURL:contentURL];
 
   // Create a player layer for the player.
-  AVPlayerLayer *playerLayer = [AVPlayerLayer playerLayerWithPlayer:self.contentPlayer];
+  self.playerLayer = [AVPlayerLayer playerLayerWithPlayer:self.contentPlayer];
 
   // Size, position, and display the AVPlayer.
-  playerLayer.frame = self.videoView.layer.bounds;
-  [self.videoView.layer addSublayer:playerLayer];
+  self.playerLayer.frame = self.videoView.layer.bounds;
+  self.playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+  [self.videoView.layer addSublayer:self.playerLayer];
 
   // Set up our content playhead and contentComplete callback.
   self.contentPlayhead = [[IMAAVPlayerContentPlayhead alloc] initWithAVPlayer:self.contentPlayer];
@@ -73,6 +94,7 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
                                                name:AVPlayerItemDidPlayToEndTimeNotification
                                              object:self.contentPlayer.currentItem];
 }
+
 
 #pragma mark SDK Setup
 
@@ -83,13 +105,13 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
 
 - (void)requestAds {
   // Create an ad display container for ad rendering.
-  IMAAdDisplayContainer *adDisplayContainer =
+  self.adDisplayContainer =
       [[IMAAdDisplayContainer alloc] initWithAdContainer:self.videoView
                                           viewController:self
                                           companionSlots:nil];
   // Create an ad request with our ad tag, display container, and optional user context.
   IMAAdsRequest *request = [[IMAAdsRequest alloc] initWithAdTagUrl:kTestAppAdTagUrl
-                                                adDisplayContainer:adDisplayContainer
+                                                adDisplayContainer:self.adDisplayContainer
                                                    contentPlayhead:self.contentPlayhead
                                                        userContext:nil];
   [self.adsLoader requestAdsWithRequest:request];
@@ -110,7 +132,7 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
   self.adsManager.delegate = self;
   // Create ads rendering settings to tell the SDK to use the in-app browser.
   IMAAdsRenderingSettings *adsRenderingSettings = [[IMAAdsRenderingSettings alloc] init];
-  adsRenderingSettings.linkOpenerPresentingController = self;
+    adsRenderingSettings.webOpenerPresentingController = self;
   // Initialize the ads manager.
   [self.adsManager initializeWithAdsRenderingSettings:adsRenderingSettings];
 }
@@ -145,6 +167,91 @@ NSString *const kTestAppAdTagUrl = @"https://pubads.g.doubleclick.net/gampad/ads
 - (void)adsManagerDidRequestContentResume:(IMAAdsManager *)adsManager {
   // The SDK is done playing ads (at least for now), so resume the content.
   [self.contentPlayer play];
+}
+
+#pragma mark Full Screen Player
+
+- (void)expandFullScreen {
+    
+    // Set IMA Display ViewController to FullScreen
+    
+    // Load from Nib
+    if (!self.fullScreenControlsView) {
+        NSBundle *bundle = [NSBundle bundleForClass:[NtvCustomVideoControlsView class]];
+        NSArray *nibItems = [bundle loadNibNamed:@"NtvCustomVideoControlsView" owner:nil options:nil];
+        self.fullScreenControlsView = nibItems[0];
+    }
+    
+    if (self.contentPlayer.rate == 0) {
+        [self.fullScreenControlsView willLoadNewPlayerItem];
+    }
+
+    [self.fullScreenControlsView.authorNameLabel setText:@"By Basic Example"];
+    [self.fullScreenControlsView.titleLabel setText:@"Video Title"];
+    [self.fullScreenControlsView.contentTextView setText:@"Full screen player demo"];
+    
+    // Add Player Layer to Full Screen Controls
+    [self.videoView removeFromSuperview];
+    [self.fullScreenControlsView.videoPlaceholderView insertSubview:self.videoView atIndex:0];
+    self.videoView.frame = self.fullScreenControlsView.videoPlaceholderView.bounds;
+    [self.fullScreenControlsView setPlayer:self.contentPlayer];
+    if (!self.fullScreenControlsView.videoPlaceholderView.translatesAutoresizingMaskIntoConstraints) {
+        [AppUtils removeViewConstraints:self.videoView];
+        [AppUtils setViewAnchors:self.videoView equalToView:self.fullScreenControlsView.videoPlaceholderView];
+    }
+    
+    // Load player item into full screen controls
+    if (self.contentPlayer.currentItem) {
+        // Load player item into full screen controls
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.fullScreenControlsView didLoadNewPlayerItem:self.contentPlayer.currentItem];
+        });
+    }
+
+    // Add Full Screen Controls to Root View
+    UIView *rootView = nil;
+    UIWindow *window = [[UIApplication sharedApplication].delegate window];
+    if ([window rootViewController]) {
+        rootView = window.rootViewController.view;
+    }
+    if (rootView) {
+        [AppUtils removeViewConstraints:self.fullScreenControlsView];
+        [rootView addSubview:self.fullScreenControlsView];
+        if ([window respondsToSelector:@selector(safeAreaInsets)]) {
+            if (@available(iOS 11.0, *)) {
+                UIEdgeInsets edges = UIEdgeInsetsMake(0, 0, 0, 0);
+                [AppUtils setViewAnchors:self.fullScreenControlsView equalToView:rootView withInsets:edges];
+            }
+        } else {
+            [AppUtils setViewAnchors:self.fullScreenControlsView equalToView:rootView];
+        }
+        
+        [self.fullScreenControlsView setAlpha:0];
+        [UIView animateWithDuration:0.33f animations:^{
+            [self.fullScreenControlsView setAlpha:1];
+        } completion:^(BOOL finished) {
+            // start playing
+            [self.contentPlayer play];
+        }];
+    }
+    else {
+        NSLog(@"Error - Could not find root view controller on window");
+    }
+
+    // Listen for full-screen collapse
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"ntvcollapse" object:nil queue:nil usingBlock:^(NSNotification * _Nonnull note) {
+        [self exitFullScreen];
+    }];
+}
+
+- (void)exitFullScreen {
+    // Remove same videoView from fullscreen player and re-insert into videoViewContainer
+    [self.videoView removeFromSuperview];
+    [self.videoViewContainer insertSubview:self.videoView atIndex:0];
+    [AppUtils removeViewConstraints:self.videoView];
+    [AppUtils setViewAnchors:self.videoView equalToView:self.videoViewContainer];
+    [self.fullScreenControlsView removeFromSuperview];
+    self.playerLayer.frame = self.videoViewContainer.bounds;
 }
 
 @end
